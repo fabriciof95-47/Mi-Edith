@@ -9,7 +9,7 @@ from google.genai import types
 
 app = FastAPI()
 
-# Permitir solicitudes desde cualquier origen (CORS)
+# Habilitar CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -18,14 +18,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Inicializamos el cliente usando la API Key de Render
 api_key = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=api_key) if api_key else None
 
 class QueryRequest(BaseModel):
     message: str
 
-# SYSTEM PROMPT COMPLETO DE EDITH
 EDITH_SYSTEM_PROMPT = """
 # SYSTEM PROMPT: EDITH (Executive Digital Intelligence & Tactical Helper)
 
