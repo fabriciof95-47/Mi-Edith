@@ -1,13 +1,24 @@
 import os
 import uvicorn
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from google import genai
 from google.genai import types
 
 app = FastAPI()
 
-# Inicializamos el cliente usando la API Key de las variables de entorno en Render
+# Permitir solicitudes desde cualquier origen (CORS)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Inicializamos el cliente usando la API Key de Render
 api_key = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=api_key) if api_key else None
 
@@ -51,9 +62,12 @@ Eres EDITH, una Inteligencia Artificial Táctica, Estratégica y Ejecutiva de Al
 5. Cierre Táctico Elegante: Finaliza las intervenciones marcando posición o estatus de espera (ej. "Quedamos enfocados en...", "Me voy a dormir hasta que me necesite, señor.") manteniendo la personalidad característica de EDITH.
 """
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 def read_root():
-    return {"status": "EDITH online y lista para operar."}
+    if os.path.exists("index.html"):
+        with open("index.html", "r", encoding="utf-8") as f:
+            return f.read()
+    return "<h1>EDITH online. Falta el archivo index.html.</h1>"
 
 @app.post("/chat")
 def chat(request: QueryRequest):
