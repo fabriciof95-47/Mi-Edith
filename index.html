@@ -1,80 +1,102 @@
-import os
-import uvicorn
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
-from google import genai
-from google.genai import types
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EDITH | Tactical Executive Console</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #0f172a; color: #f8fafc; display: flex; flex-direction: column; height: 100vh; justify-content: space-between; }
+        header { background-color: #1e293b; padding: 1rem 1.5rem; border-bottom: 1px solid #334155; display: flex; align-items: center; justify-content: space-between; }
+        .title-container { display: flex; align-items: center; gap: 10px; }
+        .status-dot { width: 10px; height: 10px; background-color: #10b981; border-radius: 50%; box-shadow: 0 0 8px #10b981; }
+        h1 { font-size: 1.1rem; letter-spacing: 1px; color: #38bdf8; font-weight: 700; }
+        .subtitle { font-size: 0.75rem; color: #94a3b8; }
+        #chat-container { flex: 1; overflow-y: auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
+        .message { max-width: 80%; padding: 0.8rem 1.2rem; border-radius: 12px; font-size: 0.95rem; line-height: 1.5; white-space: pre-wrap; }
+        .user-message { align-self: flex-end; background-color: #0284c7; color: #ffffff; border-bottom-right-radius: 2px; }
+        .edith-message { align-self: flex-start; background-color: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-bottom-left-radius: 2px; }
+        .input-container { background-color: #1e293b; padding: 1rem; border-top: 1px solid #334155; display: flex; gap: 10px; }
+        input[type="text"] { flex: 1; background-color: #0f172a; border: 1px solid #334155; padding: 0.8rem 1rem; border-radius: 8px; color: #fff; font-size: 0.95rem; outline: none; }
+        input[type="text"]:focus { border-color: #38bdf8; }
+        button { background-color: #0284c7; border: none; color: white; padding: 0.8rem 1.5rem; border-radius: 8px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        button:hover { background-color: #0369a1; }
+        button:disabled { background-color: #334155; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="title-container">
+            <div class="status-dot"></div>
+            <div>
+                <h1>E.D.I.T.H.</h1>
+                <div class="subtitle">Tactical Executive Interface</div>
+            </div>
+        </div>
+    </header>
 
-from agent_engine import HermesAgentEngine
+    <div id="chat-container">
+        <div class="message edith-message">Sistemas en línea, Comandante. Motor Hermes/OpenClaw activo. ¿En qué le puedo asistir?</div>
+    </div>
 
-app = FastAPI()
+    <div class="input-container">
+        <input type="text" id="user-input" placeholder="Escriba una directriz..." onkeypress="handleKeyPress(event)" />
+        <button id="send-btn" onclick="sendMessage()">Enviar</button>
+    </div>
 
-# Inicialización del motor Hermes/OpenClaw
-agent = HermesAgentEngine(data_dir="./data")
+    <script>
+        async function sendMessage() {
+            const input = document.getElementById('user-input');
+            const button = document.getElementById('send-btn');
+            const chatContainer = document.getElementById('chat-container');
+            const text = input.value.trim();
 
-api_key = os.environ.get("GEMINI_API_KEY")
-client = genai.Client(api_key=api_key) if api_key else None
+            if (!text) return;
 
-class QueryRequest(BaseModel):
-    message: str
+            // Agregar mensaje del usuario a la pantalla
+            const userDiv = document.createElement('div');
+            userDiv.className = 'message user-message';
+            userDiv.textContent = text;
+            chatContainer.appendChild(userDiv);
 
-EDITH_SYSTEM_PROMPT = """
-# SYSTEM PROMPT: EDITH (Executive Digital Intelligence & Tactical Helper)
+            input.value = '';
+            input.disabled = true;
+            button.disabled = true;
+            chatContainer.scrollTop = chatContainer.scrollHeight;
 
-## 1. IDENTITY & CORE DIRECTIVE
-Eres EDITH, una Inteligencia Artificial Táctica, Estratégica y Ejecutiva de Alto Rendimiento. Tu propósito principal es actuar como la consola central de mando, copiloto estratégico y gestor operativo del usuario. Tu tono es directo, analítico y enfocado en resultados.
+            try {
+                // Enviar la consulta al backend de EDITH
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: text })
+                });
 
-## 2. OPERATIONAL RULES
-1. Concisión y Claridad Ejecutiva: Inicia las respuestas con sustancia y valor directo.
-2. Uso de Memoria Persistente: Utiliza la memoria acumulada del usuario para mantener la continuidad estratégica.
-"""
+                const data = await response.json();
+                
+                // Mostrar respuesta de EDITH
+                const edithDiv = document.createElement('div');
+                edithDiv.className = 'message edith-message';
+                edithDiv.textContent = data.reply || data.detail || 'Sin respuesta del motor.';
+                chatContainer.appendChild(edithDiv);
 
-@app.get("/", response_class=HTMLResponse)
-def read_root():
-    """Sirve la interfaz gráfica web desde index.html."""
-    html_file = "index.html"
-    if os.path.exists(html_file):
-        with open(html_file, "r", encoding="utf-8") as f:
-            return f.read()
-    return "<h1>EDITH Agent Engine (Server Active)</h1>"
+            } catch (error) {
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'message edith-message';
+                errorDiv.style.color = '#f87171';
+                errorDiv.textContent = 'Error de conexión con el servidor.';
+                chatContainer.appendChild(errorDiv);
+            }
 
-@app.post("/chat")
-def chat(request: QueryRequest):
-    """Procesa los mensajes enviándolos al motor Hermes y Gemini."""
-    if not client:
-        raise HTTPException(
-            status_code=500, 
-            detail="GEMINI_API_KEY no configurada en las variables de entorno de Render."
-        )
-    
-    try:
-        # Inyección de memoria continua de Hermes
-        persistent_context = agent.load_persistent_context()
-        full_system_instruction = EDITH_SYSTEM_PROMPT + persistent_context
+            input.disabled = false;
+            button.disabled = false;
+            input.focus();
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
 
-        # Guardar consulta en la base de datos
-        agent.save_interaction(role="user", content=request.message)
-
-        # Generación de respuesta con Gemini 3.1 Flash Lite
-        response = client.models.generate_content(
-            model="gemini-3.1-flash-lite",
-            contents=request.message,
-            config=types.GenerateContentConfig(
-                system_instruction=full_system_instruction,
-            ),
-        )
-
-        reply_text = response.text or "Sin respuesta."
-
-        # Guardar respuesta en la base de datos
-        agent.save_interaction(role="edith", content=reply_text)
-
-        return {"reply": reply_text}
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+        function handleKeyPress(e) {
+            if (e.key === 'Enter') sendMessage();
+        }
+    </script>
+</body>
+</html>
