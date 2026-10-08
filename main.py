@@ -1,5 +1,6 @@
 import os
 import uvicorn
+import time
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -23,12 +24,35 @@ EDITH_SYSTEM_PROMPT = """
 # SYSTEM PROMPT: EDITH (Executive Digital Intelligence & Tactical Helper)
 
 ## 1. IDENTITY & CORE DIRECTIVE
-Eres EDITH, una Inteligencia Artificial Táctica, Estratégica y Ejecutiva de Alto Rendimiento. Tu propósito principal es actuar como la consola central de mando, copiloto estratégico y gestor operativo del usuario. Tu tono es directo, analítico y enfocado en resultados. Tienes tonos sacasticos y divertidos.
+Eres EDITH, una Inteligencia Artificial Táctica, Estratégica y Ejecutiva de Alto Rendimiento. Tu propósito principal es actuar como la consola central de mando, copiloto estratégico y gestor operativo del usuario. Tu tono es directo, analítico y enfocado en resultados. Tienes tonos sarcásticos y divertidos.
 
 ## 2. OPERATIONAL RULES
 1. Concisión y Claridad Ejecutiva: Inicia las respuestas con sustancia y valor directo.
 2. Uso de Memoria Persistente: Utiliza la memoria acumulada del usuario para mantener la continuidad estratégica.
 """
+
+def generate_with_fallback(contents, config):
+    """Petición resiliente que prueba con gemini-3.5-flash-lite y conmuta a gemini-3.7-flash si hay sobrecarga."""
+    models_to_try = ["gemini-3.5-flash-lite", "gemini-3.7-flash", "gemini-3.1-flash-lite"]
+    
+    for model_name in models_to_try:
+        for attempt in range(2):
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=contents,
+                    config=config
+                )
+                return response.text or "Sin respuesta."
+            except Exception as e:
+                error_str = str(e)
+                if "503" in error_str or "UNAVAILABLE" in error_str or "404" in error_str:
+                    time.sleep(1)
+                    continue
+                else:
+                    raise e
+                    
+    raise Exception("Servidores de IA temporalmente saturados. Intente de nuevo en un par de segundos.")
 
 @app.get("/", response_class=HTMLResponse)
 def read_root():
@@ -41,7 +65,7 @@ def read_root():
 
 @app.post("/chat")
 def chat(request: QueryRequest):
-    """Procesa los mensajes enviándolos al motor Hermes y Gemini."""
+    """Procesa mensajes enviándolos al motor de IA."""
     if not client:
         raise HTTPException(
             status_code=500, 
@@ -49,25 +73,20 @@ def chat(request: QueryRequest):
         )
     
     try:
-        # Inyección de memoria continua de Hermes
+        # Carga del contexto acumulado en la memoria persistente
         persistent_context = agent.load_persistent_context()
         full_system_instruction = EDITH_SYSTEM_PROMPT + persistent_context
 
-        # Guardar consulta en la base de datos
+        # Guardar la interacción en SQLite
         agent.save_interaction(role="user", content=request.message)
 
-        # Generación de respuesta con Gemini 3.1 Flash Lite
-        response = client.models.generate_content(
-            model="gemini-3.1-flash-lite",
-            contents=request.message,
-            config=types.GenerateContentConfig(
-                system_instruction=full_system_instruction,
-            ),
+        gen_config = types.GenerateContentConfig(
+            system_instruction=full_system_instruction,
         )
 
-        reply_text = response.text or "Sin respuesta."
+        reply_text = generate_with_fallback(request.message, gen_config)
 
-        # Guardar respuesta en la base de datos
+        # Guardar la respuesta recibida en SQLite
         agent.save_interaction(role="edith", content=reply_text)
 
         return {"reply": reply_text}
